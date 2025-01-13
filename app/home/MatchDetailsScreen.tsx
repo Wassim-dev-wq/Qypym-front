@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, {useEffect} from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -12,22 +12,77 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS } from '@/constants/Colors';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Match } from './types/Match';
-import { requestJoinMatch } from '@/app/create-match/services/api/matchJoinRequests';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import {MaterialCommunityIcons} from '@expo/vector-icons';
+import {COLORS} from '@/constants/Colors';
+import {LinearGradient} from 'expo-linear-gradient';
+import {useLocalSearchParams, useRouter} from 'expo-router';
+import {useJoinMatch, useMatch, useMatchJoin} from "@/app/create-match/services/hooks/useMatch";
 
 const MatchDetailsScreen: React.FC = () => {
     const router = useRouter();
-    const params = useLocalSearchParams<{ match: string }>();
-    const match: Match = JSON.parse(params.match);
+    const params = useLocalSearchParams<{ matchId: string }>();
 
-    const [isJoining, setIsJoining] = useState(false);
-    const [hasRequested, setHasRequested] = useState(
-        match?.userHasRequested || false
-    );
+    const {data: match, isLoading, isError, error} = useMatch(params.matchId);
+    const {
+        data: joinRequest,
+        isLoading: isJoinLoading,
+        isError: isJoinError,
+        error: joinError
+    } = useMatchJoin(params.matchId);
+    const joinMutation = useJoinMatch();
+
+    useEffect(() => {
+        if (isError) {
+            console.error('Match details error:', error);
+            Alert.alert('Error', 'Failed to load match details.');
+        }
+    }, [isError, error]);
+
+    useEffect(() => {
+        if (isJoinError) {
+            console.error('Join request error:', joinError);
+            Alert.alert('Error', 'Failed to fetch join request status.');
+        }
+    }, [isJoinError, joinError]);
+
+    if (isLoading) {
+        return (
+            <LinearGradient
+                colors={[COLORS.primary.dark, COLORS.primary.main]}
+                style={styles.gradientContainer}
+            >
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={COLORS.primary.accent}/>
+                </View>
+            </LinearGradient>
+        );
+    }
+
+    if (isError) {
+        return (
+            <LinearGradient
+                colors={[COLORS.primary.dark, COLORS.primary.main]}
+                style={styles.gradientContainer}
+            >
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>Failed to load match details</Text>
+                </View>
+            </LinearGradient>
+        );
+    }
+
+    if (!match) {
+        return (
+            <LinearGradient
+                colors={[COLORS.primary.dark, COLORS.primary.main]}
+                style={styles.gradientContainer}
+            >
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>Match not found</Text>
+                </View>
+            </LinearGradient>
+        );
+    }
 
     const handleShare = async () => {
         try {
@@ -36,27 +91,35 @@ const MatchDetailsScreen: React.FC = () => {
             });
         } catch (error) {
             console.error('Error sharing match:', error);
+            Alert.alert('Error', 'Could not share the match details.');
         }
     };
 
     const handleLike = () => {
         console.log('Liked the match:', match.id);
+        Alert.alert('Liked', 'You have liked this match.');
     };
 
     const handleJoin = async () => {
         try {
-            setIsJoining(true);
-            await requestJoinMatch(match.id);
-            setHasRequested(true);
-            Alert.alert('Request Sent', 'Your request to join the match is now pending!');
+            joinMutation.mutate(params.matchId, {
+                onSuccess: (data) => {
+                    Alert.alert('Request Sent', 'Your request to join the match is now pending!');
+                },
+                onError: (error: any) => {
+                    console.error('Error requesting to join match:', error);
+                    Alert.alert(
+                        'Error',
+                        error?.message || 'Could not join the match'
+                    );
+                }
+            });
         } catch (error: any) {
-            console.error('Error requesting to join match:', error);
+            console.error('Unexpected error:', error);
             Alert.alert(
                 'Error',
-                error?.response?.data?.message || 'Could not join the match'
+                error?.message || 'An unexpected error occurred'
             );
-        } finally {
-            setIsJoining(false);
         }
     };
 
@@ -72,13 +135,53 @@ const MatchDetailsScreen: React.FC = () => {
         minute: '2-digit',
     });
 
+    const joinStatus = joinRequest?.requestStatus || 'Not Requested';
+
+    const isJoinDisabled = joinStatus === 'PENDING' || joinStatus === 'ACCEPTED';
+
+    const joinButtonText = () => {
+        switch (joinStatus) {
+            case 'PENDING':
+                return 'Request Pending';
+            case 'ACCEPTED':
+                return 'Joined';
+            case 'REJECTED':
+                return 'Request Rejected';
+            default:
+                return 'Join Match';
+        }
+    };
+
+    const joinButtonStyle = () => {
+        switch (joinStatus) {
+            case 'PENDING':
+                return styles.requestPendingButton;
+            case 'ACCEPTED':
+                return styles.joinedButton;
+            case 'REJECTED':
+                return styles.requestRejectedButton;
+            default:
+                return styles.joinButton;
+        }
+    };
+
+    const joinButtonGradient = () => {
+        switch (joinStatus) {
+            case 'PENDING':
+            case 'ACCEPTED':
+            case 'REJECTED':
+                return [COLORS.primary.dark, COLORS.primary.dark];
+            default:
+                return [COLORS.primary.accent, COLORS.primary.dark];
+        }
+    };
+
     return (
         <LinearGradient
             colors={[COLORS.primary.dark, COLORS.primary.main]}
             style={styles.gradientContainer}
         >
             <SafeAreaView style={styles.safeArea}>
-                {/* Header */}
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
                         <MaterialCommunityIcons
@@ -173,31 +276,22 @@ const MatchDetailsScreen: React.FC = () => {
                     </View>
                 </ScrollView>
 
-                {/* Join Button */}
                 <View style={styles.joinButtonContainer}>
                     <TouchableOpacity
                         onPress={handleJoin}
-                        style={styles.joinButton}
-                        disabled={isJoining || hasRequested}
+                        style={[styles.joinButton, joinButtonStyle()]}
+                        disabled={isJoinDisabled || joinMutation.isLoading}
                     >
                         <LinearGradient
-                            colors={
-                                isJoining || hasRequested
-                                    ? [COLORS.primary.dark, COLORS.primary.dark]
-                                    : [COLORS.primary.accent, COLORS.primary.dark]
-                            }
+                            colors={joinButtonGradient()}
                             style={styles.joinButtonGradient}
                             start={[0, 0]}
                             end={[1, 0]}
                         >
-                            {isJoining ? (
-                                <ActivityIndicator color={COLORS.neutral[50]} />
-                            ) : hasRequested ? (
-                                <Text style={[styles.joinButtonText, styles.requestPendingText]}>
-                                    Request Pending
-                                </Text>
+                            {joinMutation.isLoading ? (
+                                <ActivityIndicator color={COLORS.neutral[50]}/>
                             ) : (
-                                <Text style={styles.joinButtonText}>Join Match</Text>
+                                <Text style={styles.joinButtonText}>{joinButtonText()}</Text>
                             )}
                         </LinearGradient>
                     </TouchableOpacity>
@@ -234,7 +328,7 @@ const styles = StyleSheet.create({
     },
     contentContainer: {
         padding: 16,
-        paddingBottom: 80,
+        paddingBottom: 100, // Increased to accommodate button
     },
     imageContainer: {
         position: 'relative',
@@ -289,7 +383,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
         shadowColor: '#000',
         shadowOpacity: 0.15,
-        shadowOffset: { width: 0, height: 3 },
+        shadowOffset: {width: 0, height: 3},
         elevation: 3,
     },
     cardHeader: {
@@ -314,6 +408,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         padding: 16,
+        backgroundColor: 'transparent',
     },
     joinButton: {
         width: '100%',
@@ -331,8 +426,26 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
     },
-    requestPendingText: {
-        color: '#F0AD4E',
-        fontWeight: 'bold',
+    requestPendingButton: {
+    },
+    joinedButton: {
+    },
+    requestRejectedButton: {
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    errorText: {
+        color: COLORS.neutral[50],
+        fontSize: 16,
+        textAlign: 'center',
     },
 });
