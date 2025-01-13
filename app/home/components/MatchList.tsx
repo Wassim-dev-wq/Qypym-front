@@ -14,7 +14,7 @@ import { format, isToday, isTomorrow } from 'date-fns';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import MatchStatusBadge from './MatchStatusBadge';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { Match } from '../types/Match';
+import type { Match } from '../../utils/types/match/match';
 
 interface MatchListProps {
     matches: Match[];

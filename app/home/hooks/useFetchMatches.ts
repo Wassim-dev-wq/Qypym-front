@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LocationObject } from 'expo-location';
 import { fetchMatchesFromAPI } from '../services/matchService';
-import { Match } from '../types/Match';
+import { Match } from '../../utils/types/match/match';
 
 interface Filters {
     skillLevel?: string;
