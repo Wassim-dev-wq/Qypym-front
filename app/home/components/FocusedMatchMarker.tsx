@@ -3,7 +3,7 @@ import { Marker } from 'react-native-maps';
 import { StyleSheet, Text, View, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '@/constants/Colors';
-import type { Match } from '../types/Match';
+import type { Match } from '../../utils/types/match/match';
 
 interface MatchMarkerProps {
     match: Match;

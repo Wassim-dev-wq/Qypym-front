@@ -11,7 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '@/constants/Colors';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { Match } from '../types/Match';
+import type { Match } from '../../utils/types/match/match';
 
 interface MatchCalloutProps {
     match: Match;

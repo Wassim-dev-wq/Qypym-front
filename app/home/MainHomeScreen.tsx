@@ -1,11 +1,6 @@
-import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState,} from 'react';
 import {
+    Alert,
     Animated,
     Dimensions,
     Easing,
@@ -20,24 +15,29 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import MapView, { PROVIDER_DEFAULT, Region } from 'react-native-maps';
+import MapView, {Marker, PROVIDER_DEFAULT, Region} from 'react-native-maps';
 import MapViewClustering from 'react-native-map-clustering';
 import * as Location from 'expo-location';
-import { StatusBar } from 'expo-status-bar';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { debounce } from 'lodash';
-import { useRouter } from 'expo-router';
+import {StatusBar} from 'expo-status-bar';
+import {MaterialCommunityIcons} from '@expo/vector-icons';
+import {debounce} from 'lodash';
+import {useRouter} from 'expo-router';
 
-// Local imports
 import EventFilterModal from './components/EventFilterModal';
 import FocusedMatchCallout from './components/FocusedMatchCallout';
-import { COLORS } from '@/constants/Colors';
-import { useFetchMatches } from './hooks/useFetchMatches';
-import { Match } from './types/Match';
-import { fetchMatchesFromAPI } from './services/matchService';
 import FocusedMatchMarker from './components/FocusedMatchMarker';
+import {COLORS} from '@/constants/Colors';
+import {useFetchMatches} from './hooks/useFetchMatches';
+import {fetchMatchesFromAPI} from './services/matchService';
 
-const { width, height } = Dimensions.get('window');
+import {useQueryClient} from "@tanstack/react-query";
+import {matchesApi} from "@/app/create-match/services/api/matches.api";
+import {Match} from "@/app/utils/types/match/match";
+import {Filters} from "@/app/utils/types/match/filters";
+import {storage} from "@/app/utils/storage";
+import MatchCard from "@/app/home/components/MatchCard";
+
+const {width, height} = Dimensions.get('window');
 const ASPECT_RATIO = width / height;
 const LATITUDE_DELTA = 0.02;
 const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
@@ -55,32 +55,19 @@ const ZOOM_LEVEL_THRESHOLDS = {
     HIDE_ALL: 8,
 };
 
-/** Example Filters interface, adapt as needed */
-interface Filters {
-    priceRange: [number, number];
-    skillLevel: string;
-    timeOfDay: string[];
-    matchType: string;
-    distance: number;
-    facilities: string[];
-    availability: string[];
-    ageRange: [number, number];
-    location: string;
-}
-
 const MainHomeScreen: React.FC = () => {
     const router = useRouter();
 
-    // Basic states
-    const [isMapMode, setIsMapMode] = useState(false);
+    const [isMapMode, setIsMapMode] = useState<boolean>(false);
     const [location, setLocation] = useState<Location.LocationObject | null>(null);
-    const [isFilterModalVisible, setFilterModalVisible] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [currentZoom, setCurrentZoom] = useState(10);
+    const [isFilterModalVisible, setFilterModalVisible] = useState<boolean>(false);
+    const [searchQuery, setSearchQuery] = useState<string>('');
+    const [currentZoom, setCurrentZoom] = useState<number>(10);
     const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
-    const [showCallout, setShowCallout] = useState(false);
-    const [isMapReady, setIsMapReady] = useState(false);
+    const [showCallout, setShowCallout] = useState<boolean>(false);
+    const [isMapReady, setIsMapReady] = useState<boolean>(false);
     const [visibleMatches, setVisibleMatches] = useState<Match[]>([]);
+    const queryClient = useQueryClient();
     const [selectedTab, setSelectedTab] = useState<
         'Explore' | 'Saved' | 'Matches' | 'Messages' | 'Profile'
     >('Explore');
@@ -94,7 +81,15 @@ const MainHomeScreen: React.FC = () => {
     });
     const mapRef = useRef<MapView>(null);
 
-    // Example filters (distance, skill, etc.)
+    const navigateToMatchDetails = (match: Match) => {
+        queryClient.prefetchQuery({
+            queryKey: ['match', match.id],
+            queryFn: () => matchesApi.getById(match.id),
+            staleTime: 5 * 60 * 1000,
+        });
+        router.push(`/home/MatchDetailsScreen?matchId=${match.id}`);
+    };
+
     const [filters, setFilters] = useState<Filters>({
         priceRange: [0, 100],
         skillLevel: '',
@@ -107,30 +102,31 @@ const MainHomeScreen: React.FC = () => {
         location: '',
     });
 
-    // 1) Get matches from useFetchMatches (initial load)
-    const { matches, isLoading } = useFetchMatches({ location, filters });
+    const {matches, isLoading} = useFetchMatches({location, filters});
 
-    // 2) Sync to local visibleMatches
     useEffect(() => {
         if (matches) {
             setVisibleMatches(matches);
         }
     }, [matches]);
 
-    // 3) Request location permission
     useEffect(() => {
         (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
+            const {status} = await Location.requestForegroundPermissionsAsync();
             if (status === 'granted') {
                 const loc = await Location.getCurrentPositionAsync({});
                 setLocation(loc);
+                setMapRegion({
+                    ...mapRegion,
+                    latitude: loc.coords.latitude,
+                    longitude: loc.coords.longitude,
+                });
+            } else {
+                Alert.alert('Permission Denied', 'Location permission is required to use this feature.');
             }
         })();
     }, []);
 
-    // 4) When user pans/zooms, re-fetch from API
-    //    or optionally just do a partial approach.
-    //    Debounce to avoid spamming the server.
     const updateVisibleMatches = useCallback(
         debounce(async (region: Region, zoom: number) => {
             if (zoom <= ZOOM_LEVEL_THRESHOLDS.HIDE_ALL) {
@@ -138,32 +134,39 @@ const MainHomeScreen: React.FC = () => {
                 return;
             }
 
-            const nearbyMatches = await fetchMatchesFromAPI(
-                {
-                    coords: {
-                        latitude: region.latitude,
-                        longitude: region.longitude,
-                        accuracy: 1,
-                        altitude: null,
-                        altitudeAccuracy: null,
-                        heading: null,
-                        speed: null,
+            try {
+                const nearbyMatches = await fetchMatchesFromAPI(
+                    {
+                        coords: {
+                            latitude: region.latitude,
+                            longitude: region.longitude,
+                            accuracy: 1,
+                            altitude: null,
+                            altitudeAccuracy: null,
+                            heading: null,
+                            speed: null,
+                        },
+                        timestamp: Date.now(),
                     },
-                    timestamp: Date.now(),
-                },
-                {
-                    skillLevel: filters.skillLevel,
-                    distance: filters.distance,
-                    // you can pass more if needed
-                },
-                0
-            );
-            if (nearbyMatches.data.content.length > 0) {
-                const filtered =
-                    zoom >= ZOOM_LEVEL_THRESHOLDS.SHOW_ALL
-                        ? nearbyMatches.data.content
-                        : nearbyMatches.data.content.filter((_, idx) => idx % 3 === 0);
-                setVisibleMatches(filtered);
+                    {
+                        skillLevel: filters.skillLevel,
+                        distance: filters.distance,
+                    },
+                    0
+                );
+
+                if (nearbyMatches.data.content.length > 0) {
+                    const filtered =
+                        zoom >= ZOOM_LEVEL_THRESHOLDS.SHOW_ALL
+                            ? nearbyMatches.data.content
+                            : nearbyMatches.data.content.filter((_, idx) => idx % 3 === 0);
+                    setVisibleMatches(filtered);
+                } else {
+                    setVisibleMatches([]);
+                }
+            } catch (error) {
+                console.error('Error fetching matches:', error);
+                Alert.alert('Error', 'Failed to fetch matches. Please try again later.');
             }
         }, 200),
         [filters]
@@ -184,12 +187,12 @@ const MainHomeScreen: React.FC = () => {
     const translateY = useRef(new Animated.Value(0)).current;
     const lastTranslateY = useRef(0);
     const SNAP_BOTTOM = CONTENT_HEIGHT - MINIMIZED_LIST_HEIGHT;
-    const [isAtTop, setIsAtTop] = useState(true);
-    const [showMinimizedText, setShowMinimizedText] = useState(false);
+    const [isAtTop, setIsAtTop] = useState<boolean>(true);
+    const [showMinimizedText, setShowMinimizedText] = useState<boolean>(false);
     const bottomNavAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        const id = translateY.addListener(({ value }) => {
+        const id = translateY.addListener(({value}) => {
             setShowMinimizedText(value > SNAP_BOTTOM * 0.25);
         });
         return () => {
@@ -197,12 +200,12 @@ const MainHomeScreen: React.FC = () => {
         };
     }, [SNAP_BOTTOM, translateY]);
 
-    const sheetStyle = useMemo(() => ({ transform: [{ translateY }] }), [translateY]);
+    const sheetStyle = useMemo(() => ({transform: [{translateY}]}), [translateY]);
 
     const hideBottomSheet = () => {
         Animated.timing(translateY, {
             toValue: CONTENT_HEIGHT + 100,
-            duration: 10,
+            duration: 300,
             useNativeDriver: true,
             easing: Easing.out(Easing.ease),
         }).start();
@@ -211,7 +214,7 @@ const MainHomeScreen: React.FC = () => {
     const showBottomSheet = () => {
         Animated.timing(translateY, {
             toValue: isMapMode ? SNAP_BOTTOM : 0,
-            duration: 200,
+            duration: 300,
             useNativeDriver: true,
             easing: Easing.inOut(Easing.ease),
         }).start(() => {
@@ -223,7 +226,7 @@ const MainHomeScreen: React.FC = () => {
         setShowCallout(false);
         Animated.timing(translateY, {
             toValue: 0,
-            duration: 330,
+            duration: 300,
             useNativeDriver: true,
         }).start(() => {
             lastTranslateY.current = 0;
@@ -307,10 +310,10 @@ const MainHomeScreen: React.FC = () => {
     // Render cluster
     const renderCluster = useCallback(
         (cluster: any) => {
-            const { pointCount, coordinate, clusterId } = cluster;
+            const {pointCount, coordinate, clusterId} = cluster;
             const isLarge = pointCount > 10;
             return (
-                <MapView.Marker
+                <Marker
                     key={`cluster-${clusterId}`}
                     coordinate={coordinate}
                     tracksViewChanges={false}
@@ -321,7 +324,7 @@ const MainHomeScreen: React.FC = () => {
                             pitch: 0,
                             heading: 0,
                         };
-                        mapRef.current?.animateCamera(newCamera, { duration: 500 });
+                        mapRef.current?.animateCamera(newCamera, {duration: 500});
                     }}
                 >
                     <View
@@ -332,7 +335,7 @@ const MainHomeScreen: React.FC = () => {
                     >
                         <Text style={styles.clusterText}>{pointCount}</Text>
                     </View>
-                </MapView.Marker>
+                </Marker>
             );
         },
         [currentZoom]
@@ -341,29 +344,15 @@ const MainHomeScreen: React.FC = () => {
     // List rendering
     const renderItem = useCallback(
         ({ item }: { item: Match }) => (
-            <TouchableOpacity
-                style={styles.cardContainer}
-                onPress={() => {
-                    // Go to details
-                    router.push(`/home/MatchDetailsScreen?matchId=${item.id}`);
+            <MatchCard
+                match={item}
+                onPress={(match) => {
+                    navigateToMatchDetails(match);
                     setShowCallout(false);
                 }}
-            >
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.cardSubtitle}>
-                    {item.title || 'Detailed info about this match'}
-                </Text>
-                <View style={styles.cardMeta}>
-                    <Text style={styles.cardMetaText}>
-                        {item.location.address || 'Location'}
-                    </Text>
-                    <Text style={styles.cardMetaText}>
-                        {item.matchType || 'Type'} - {item.skillLevel || 'Skill'}
-                    </Text>
-                </View>
-            </TouchableOpacity>
+            />
         ),
-        [router]
+        [navigateToMatchDetails]
     );
 
     // To re-enable bottom sheet drag only if top
@@ -372,9 +361,15 @@ const MainHomeScreen: React.FC = () => {
         setIsAtTop(offsetY <= 0);
     };
 
+    // Focused Match Callout: Find the selected match
+    const selectedMatch = useMemo(
+        () => visibleMatches.find((m) => m.id === selectedMarkerId),
+        [visibleMatches, selectedMarkerId]
+    );
+
     return (
         <View style={styles.container}>
-            <StatusBar style="light" />
+            <StatusBar style="light"/>
 
             {/* Header with search/filter */}
             <View style={styles.header}>
@@ -412,7 +407,7 @@ const MainHomeScreen: React.FC = () => {
 
             {/* Map + Bottom Sheet */}
             <View style={styles.contentContainer}>
-                <View style={[styles.mapContainer, { height: CONTENT_HEIGHT }]}>
+                <View style={[styles.mapContainer, {height: CONTENT_HEIGHT}]}>
                     <MapViewClustering
                         ref={mapRef}
                         style={styles.map}
@@ -423,8 +418,6 @@ const MainHomeScreen: React.FC = () => {
                         clusteringEnabled
                         clusterColor={COLORS.primary.accent}
                         clusterTextColor="#fff"
-                        clusterBorderColor="#fff"
-                        clusterBorderWidth={1}
                         renderCluster={renderCluster}
                         animationEnabled
                         radius={50}
@@ -465,7 +458,7 @@ const MainHomeScreen: React.FC = () => {
                         style={styles.sheetHeader}
                         {...panResponder.panHandlers}
                     >
-                        <View style={styles.sheetHandle} />
+                        <View style={styles.sheetHandle}/>
                         {showMinimizedText && (
                             <View style={styles.sheetMinimizedText}>
                                 <Text style={styles.sheetMinimizedTitle}>
@@ -486,8 +479,8 @@ const MainHomeScreen: React.FC = () => {
                         renderItem={renderItem}
                         onScroll={onScroll}
                         scrollEventThrottle={16}
-                        style={{ flex: 1 }}
-                        contentContainerStyle={{ paddingBottom: 100 }}
+                        style={{flex: 1}}
+                        contentContainerStyle={{paddingBottom: 100}}
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
                                 <Text style={styles.emptyText}>
@@ -499,14 +492,14 @@ const MainHomeScreen: React.FC = () => {
                 </Animated.View>
 
                 {/* Focused Match Callout (on top of map) */}
-                {showCallout && selectedMarkerId && (
+                {showCallout && selectedMatch && (
                     <FocusedMatchCallout
-                        match={visibleMatches.find((m) => m.id === selectedMarkerId)}
+                        match={selectedMatch}
                         onPress={(selectedMatch) => {
                             router.push({
                                 pathname: '/home/MatchDetailsScreen',
                                 params: {
-                                    match: JSON.stringify(selectedMatch),
+                                    matchId: selectedMatch.id,
                                 },
                             });
                         }}
@@ -528,7 +521,7 @@ const MainHomeScreen: React.FC = () => {
                     style={[
                         styles.bottomNav,
                         {
-                            transform: [{ translateY: bottomNavAnim }],
+                            transform: [{translateY: bottomNavAnim}],
                         },
                     ]}
                 >
@@ -656,12 +649,12 @@ const MainHomeScreen: React.FC = () => {
                         styles.mapButton,
                         {
                             backgroundColor: COLORS.primary.accent,
-                            transform: [{ translateY: bottomNavAnim }],
+                            transform: [{translateY: bottomNavAnim}],
                         },
                     ]}
                 >
-                    <TouchableOpacity onPress={toggleMapMode}>
-                        <MaterialCommunityIcons name="map-outline" size={24} color="#fff" />
+                    <TouchableOpacity onPress={toggleMapMode} style={styles.mapButtonContent}>
+                        <MaterialCommunityIcons name="map-outline" size={22} color="#fff"/>
                         <Text style={styles.mapButtonText}>Map</Text>
                     </TouchableOpacity>
                 </Animated.View>
@@ -672,7 +665,7 @@ const MainHomeScreen: React.FC = () => {
                 style={[
                     styles.createMatchButton,
                     {
-                        transform: [{ translateY: bottomNavAnim }],
+                        transform: [{translateY: bottomNavAnim}],
                     },
                 ]}
             >
@@ -680,7 +673,7 @@ const MainHomeScreen: React.FC = () => {
                     onPress={() => router.push('/create-match/createMatch')}
                     activeOpacity={0.7}
                 >
-                    <MaterialCommunityIcons name="plus" size={24} color="#fff" />
+                    <MaterialCommunityIcons name="plus" size={24} color="#fff"/>
                 </TouchableOpacity>
             </Animated.View>
 
@@ -696,7 +689,6 @@ const MainHomeScreen: React.FC = () => {
     );
 };
 
-// Style definitions
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -851,9 +843,8 @@ const styles = StyleSheet.create({
     },
     mapButton: {
         position: 'absolute',
-        bottom: BOTTOM_NAV_HEIGHT + 16,
-        left: '50%',
-        transform: [{ translateX: -45 }],
+        bottom: BOTTOM_NAV_HEIGHT + 30,
+        alignSelf: 'center',
         zIndex: 11,
         flexDirection: 'row',
         alignItems: 'center',
@@ -862,16 +853,20 @@ const styles = StyleSheet.create({
         width: 90,
         borderRadius: 20,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
+        shadowOffset: {width: 0, height: 1},
         shadowOpacity: 0.2,
         shadowRadius: 2,
         elevation: 3,
     },
+    mapButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     mapButtonText: {
         color: '#fff',
         marginLeft: 6,
-        fontSize: 14,
-        fontWeight: '500',
+        fontSize: 15,
+        fontWeight: '600',
     },
     cardContainer: {
         backgroundColor: COLORS.background.input,
@@ -912,7 +907,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: {width: 0, height: 2},
         shadowOpacity: 0.3,
         shadowRadius: 4,
         elevation: 5,
