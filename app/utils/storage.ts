@@ -41,6 +41,15 @@ export const storage = {
         }
     },
 
+    async getRefreshToken() {
+        try {
+            return await SecureStore.getItemAsync('refreshToken');
+        } catch (error) {
+            console.warn('Error reading token:', error);
+            return null;
+        }
+    },
+
     async removeToken() {
         try {
             await SecureStore.deleteItemAsync('userToken');
@@ -68,6 +77,33 @@ export const storage = {
         } catch (error) {
             console.warn('Error reading user data:', error);
             return null;
+        }
+    },
+
+    async debugSecureStore() {
+        try {
+            const keys = ['userToken', 'refreshToken', 'expiresIn'];
+            console.log('SecureStore Contents:');
+
+            for (const key of keys) {
+                const value = await SecureStore.getItemAsync(key);
+                console.log(`${key}: ${value ? '[EXISTS]' : '[EMPTY]'}`);
+            }
+        } catch (error) {
+            console.error('SecureStore debug error:', error);
+        }
+    },
+
+    async clearAllStorage() {
+        try {
+            await AsyncStorage.clear();
+            const secureKeys = ['userToken', 'refreshToken', 'expiresIn'];
+            await Promise.all(
+                secureKeys.map(key => SecureStore.deleteItemAsync(key))
+            );
+            console.log('All storage cleared successfully');
+        } catch (error) {
+            console.error('Error clearing storage:', error);
         }
     }
 };

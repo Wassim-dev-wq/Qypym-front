@@ -71,14 +71,12 @@ export default function LoginScreen() {
     const {signIn} = useAuth();
     const [socialLoading, setSocialLoading] = useState(false);
 
-    // Animation values
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.9)).current;
     const formPositionY = useRef(new Animated.Value(0)).current;
     const socialSectionAnim = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
-        // Initial animation
         Animated.parallel([
             Animated.timing(fadeAnim, {
                 toValue: 1,
@@ -141,7 +139,7 @@ export default function LoginScreen() {
     const handleLogin = async (values: { email: string; password: string }, {setSubmitting}: any) => {
         try {
             const authResponse = await authApi.login(values.email, values.password);
-            await signIn(authResponse.accessToken);
+            await signIn(authResponse.data.accessToken);
         } catch (error: any) {
             Alert.alert(t('loginFailed'), error.message);
         } finally {
@@ -152,7 +150,6 @@ export default function LoginScreen() {
     const handleSocialLogin = async (provider: 'google' | 'facebook' | 'apple') => {
         setSocialLoading(true);
         try {
-            // Implement social login logic here
             console.log(`${provider} login clicked`);
         } finally {
             setSocialLoading(false);
