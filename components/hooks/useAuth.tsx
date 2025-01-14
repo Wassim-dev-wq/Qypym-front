@@ -28,7 +28,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         if (!isLoading) {
-            const route = isSignedIn ? '/home/MainHomeScreen' : '/home/MainHomeScreen';
+            const route = isSignedIn ? '/home/MainHomeScreen' : '/(auth)/login';
+            console.log('Redirecting to:', route);
             router.replace(route);
         }
     }, [isSignedIn, isLoading]);
@@ -74,11 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signIn = async (token: string, newUserData?: any) => {
         try {
-            await storage.setToken(token);
-            if (newUserData) {
-                await storage.setUserData(newUserData);
-                setUserData(newUserData);
-            }
+            console.log('Signing in');
             setIsSignedIn(true);
         } catch (error) {
             console.error('Sign in error:', error);
