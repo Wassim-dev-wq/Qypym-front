@@ -1,56 +1,106 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
     ActivityIndicator,
     Alert,
     Animated,
     Dimensions,
+    FlatList,
+    Keyboard,
     Modal,
     Platform,
     SafeAreaView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
-    TextInput,
-    FlatList,
-    Keyboard,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import DateTimePicker, { Event } from '@react-native-community/datetimepicker';
+import {MaterialCommunityIcons} from '@expo/vector-icons';
+import DateTimePicker, {DateTimePickerEvent} from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
-import { debounce } from 'lodash';
-import { COLORS } from '@/constants/Colors';
-import { t } from '@/constants/locales';
-import { createMatch } from '@/app/create-match/services/api/matches';
-import { useRouter } from 'expo-router';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import {MatchDetails, SuggestionItem} from "@/app/create-match/types/matches";
-import { SkillLevel } from './types/matches';
+import {debounce} from 'lodash';
+import {COLORS} from '@/constants/Colors';
+import {t} from '@/constants/locales';
+import {useRouter} from 'expo-router';
+import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
+import * as Yup from 'yup';
+import {Formik, FormikProps} from 'formik';
+import {matchesApi} from "@/app/create-match/services/api/matches.api";
+import {MATCH_FORMATS, SKILL_LEVELS} from "@/app/utils/types/match/options";
+import {SuggestionItem} from "@/app/utils/types/match/suggestionItem";
+import {initialMatchDetails, MatchFormData} from "@/app/utils/types/match/matchFormData";
 
-const MATCH_FORMATS = ['5v5', '7v7', '11v11', t('custom')];
-const SKILL_LEVELS: SkillLevel[] = [
-    { id: 'beginner', icon: 'star-outline', label: t('beginner') },
-    { id: 'intermediate', icon: 'star-half', label: t('intermediate') },
-    { id: 'advanced', icon: 'star', label: t('advanced') },
-    { id: 'all', icon: 'star-circle', label: t('allLevels') },
-];
 
-const { width } = Dimensions.get('window');
+const {width} = Dimensions.get('window');
+
+const matchValidationSchema = Yup.object().shape({
+    title: Yup.string()
+        .trim()
+        .required('Title is required'),
+    date: Yup.date()
+        .transform((value, originalValue) => {
+            if (originalValue instanceof Date) {
+                return originalValue;
+            }
+            const parts = originalValue.split('.');
+            if (parts.length >= 2) {
+                const day = parts[0];
+                const month = parts[1];
+                const currentYear = new Date().getFullYear();
+                const dateString = `${month}/${day}/${currentYear}`;
+                return new Date(dateString);
+            }
+            return null;
+        })
+        .typeError("Please enter a valid date")
+        .required("Date is required")
+        .min(new Date(), "Date is too early")
+        .test("is-future", "Date must be in the future", function (value) {
+            return value > new Date();
+        }),
+    time: Yup.date()
+        .transform((value, originalValue) => {
+            if (originalValue instanceof Date) {
+                return originalValue;
+            }
+            const [hours, minutes] = originalValue.split(':');
+            if (hours && minutes) {
+                const now = new Date();
+                const timeDate = new Date(now);
+                timeDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0);
+                return timeDate;
+            }
+            return null;
+        })
+        .typeError("Please enter a valid time")
+        .required("Time is required")
+        .test("is-valid-time", "Please enter a valid time", function (value) {
+            return !isNaN(value);
+        }),
+    location: Yup.string()
+        .trim()
+        .min(2, 'Invalid location')
+        .required('Please enter a location'),
+    latitude: Yup.number()
+        .required('Invalid location selection'),
+    longitude: Yup.number()
+        .required('Invalid location selection'),
+    format: Yup.string()
+        .trim()
+        .min(2, 'Invalid format')
+        .required('Please select a format'),
+    duration: Yup.number()
+        .min(30, 'Invalid duration')
+        .max(180, 'Invalid duration')
+        .required('Please enter a duration'),
+    skillLevel: Yup.string()
+        .oneOf(SKILL_LEVELS.map(level => level.id), 'Invalid skill level')
+        .required('Please select a skill level'),
+});
 
 const MatchCreationScreen: React.FC = () => {
     const steps = ['General Info', 'Format & Duration', 'Skill Level', 'Confirmation'];
     const [currentStep, setCurrentStep] = useState<number>(0);
-    const [matchDetails, setMatchDetails] = useState<MatchDetails>({
-        title: '',
-        date: new Date(),
-        time: new Date(),
-        location: '',
-        latitude: undefined,
-        longitude: undefined,
-        format: '5v5',
-        duration: 60,
-        skillLevel: 'intermediate',
-    });
 
     const progressAnimation = useRef(new Animated.Value(0)).current;
     const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
@@ -64,15 +114,6 @@ const MatchCreationScreen: React.FC = () => {
     const inputRef = useRef<TextInput>(null);
     const router = useRouter();
 
-    // Update field with proper typing
-    const updateField = useCallback(
-        (field: keyof MatchDetails, value: string | number | Date) => {
-            setMatchDetails(prev => ({ ...prev, [field]: value }));
-        },
-        []
-    );
-
-    // Fetch suggestions with proper typing
     const fetchSuggestions = async (text: string): Promise<void> => {
         if (text.length < 3) {
             setSuggestions([]);
@@ -84,11 +125,6 @@ const MatchCreationScreen: React.FC = () => {
                 `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=fr&q=${encodeURIComponent(
                     text
                 )}`,
-                {
-                    headers: {
-                        'User-Agent': 'YourAppName/1.0 (your.email@example.com)',
-                    },
-                }
             );
             const data: SuggestionItem[] = await response.json();
             const filtered = data
@@ -105,17 +141,20 @@ const MatchCreationScreen: React.FC = () => {
 
     const debouncedFetch = useRef(debounce(fetchSuggestions, 500)).current;
 
-    // Handle location change
-    const handleLocationChange = (text: string): void => {
+    useEffect(() => {
+        return () => {
+            debouncedFetch.cancel();
+        };
+    }, [debouncedFetch]);
+
+    const handleLocationChange = (text: string, setFieldValue: FormikProps<MatchFormData>['setFieldValue']) => {
         setQuery(text);
-        updateField('location', text);
+        setFieldValue('location', text);
         debouncedFetch(text);
     };
 
-    // Select suggestion
-    const selectSuggestion = (item: SuggestionItem): void => {
-        const { house_number, road, suburb, city, town, village, state, postcode, country } =
-            item.address;
+    const selectSuggestion = (item: SuggestionItem, setFieldValue: FormikProps<MatchFormData>['setFieldValue']) => {
+        const {house_number, road, suburb, city, town, village, state, postcode, country} = item.address;
         const address = [
             house_number,
             road,
@@ -129,93 +168,44 @@ const MatchCreationScreen: React.FC = () => {
             .join(', ');
 
         setQuery(address);
-        updateField('location', address);
-        updateField('latitude', parseFloat(item.lat));
-        updateField('longitude', parseFloat(item.lon));
+        setFieldValue('location', address);
+        setFieldValue('latitude', parseFloat(item.lat));
+        setFieldValue('longitude', parseFloat(item.lon));
         setSuggestions([]);
         Keyboard.dismiss();
     };
 
-    useEffect(() => {
-        return () => {
-            debouncedFetch.cancel();
-        };
-    }, [debouncedFetch]);
+    const handleNext = (formikProps: FormikProps<MatchFormData>) => {
+        formikProps
+            .validateForm()
+            .then(errors => {
+                const stepFields = getFieldsForStep(currentStep);
+                const stepErrors = stepFields.filter(field => errors[field]);
 
-    // Validate each step
-    const validateStep = useCallback((): boolean => {
-        switch (currentStep) {
-            case 0: {
-                if (!matchDetails.title.trim()) {
-                    Alert.alert(t('messages.validationError'), t('messages.pleaseEnterTitle'));
-                    return false;
+                if (stepErrors.length > 0) {
+                    const errorMessages = stepErrors
+                        .map(field => (formikProps.errors[field] ? formikProps.errors[field] : ''))
+                        .filter(msg => msg !== '')
+                        .join('\n');
+                    Alert.alert(t('messages.validationError'), errorMessages);
+                } else {
+                    if (isLastStep) {
+                        formikProps.handleSubmit();
+                    } else {
+                        setCurrentStep(step => step + 1);
+                    }
                 }
-                const today = new Date();
-                const selectedDate = new Date(matchDetails.date);
-                today.setHours(0, 0, 0, 0);
-                selectedDate.setHours(0, 0, 0, 0);
-                if (selectedDate < today) {
-                    Alert.alert(t('messages.validationError'), t('messages.invalidDate'));
-                    return false;
-                }
-                if (matchDetails.location.trim().length < 2) {
-                    Alert.alert(t('messages.validationError'), t('messages.invalidLocation'));
-                    return false;
-                }
-                if (matchDetails.latitude === undefined || matchDetails.longitude === undefined) {
-                    Alert.alert(t('messages.validationError'), t('messages.invalidLocationSelection'));
-                    return false;
-                }
-                return true;
-            }
-            case 1: {
-                if (
-                    !MATCH_FORMATS.includes(matchDetails.format) &&
-                    (typeof matchDetails.format !== 'string' || matchDetails.format.trim().length < 2)
-                ) {
-                    Alert.alert(t('messages.validationError'), t('messages.invalidFormat'));
-                    return false;
-                }
-                if (matchDetails.duration < 30 || matchDetails.duration > 180) {
-                    Alert.alert(t('messages.validationError'), t('messages.invalidDuration'));
-                    return false;
-                }
-                return true;
-            }
-            case 2: {
-                if (!SKILL_LEVELS.find(s => s.id === matchDetails.skillLevel)) {
-                    Alert.alert(t('messages.validationError'), t('messages.invalidSkillLevel'));
-                    return false;
-                }
-                return true;
-            }
-            default:
-                return true;
-        }
-    }, [currentStep, matchDetails]);
+            })
+            .catch(err => {
+                console.error(err);
+            });
+    };
 
-    // Handle next button
-    const handleNext = useCallback(async () => {
-        if (!validateStep()) return;
-        if (isLastStep) {
-            try {
-                await createMatch(matchDetails, 'f8c3de3d-1fea-4d7c-a8b0-29f63c4c3454');
-                Alert.alert(t('messages.success'), t('messages.matchCreatedSuccessfully'));
-                router.push('../home/HomeScreen');
-            } catch (error) {
-                Alert.alert(t('messages.error'), t('messages.failedToCreateMatch'));
-            }
-        } else {
-            setCurrentStep(step => step + 1);
-        }
-    }, [validateStep, matchDetails, isLastStep, router]);
-
-    // Handle back button
-    const handleBack = useCallback(() => {
+    const handleBack = () => {
         if (currentStep > 0) {
             setCurrentStep(step => step - 1);
         }
-    }, [currentStep]);
+    };
 
     useEffect(() => {
         const progress = ((currentStep + 1) / totalSteps) * 100;
@@ -231,50 +221,73 @@ const MatchCreationScreen: React.FC = () => {
         outputRange: ['0%', '100%'],
     });
 
-    // Render steps
-    const renderGeneralInfo = () => (
+    const getFieldsForStep = (step: number): Array<keyof MatchFormData> => {
+        switch (step) {
+            case 0:
+                return ['title', 'date', 'time', 'location', 'latitude', 'longitude'];
+            case 1:
+                return ['format', 'duration'];
+            case 2:
+                return ['skillLevel'];
+            default:
+                return [];
+        }
+    };
+
+    const renderGeneralInfo = (formikProps: FormikProps<MatchFormData>) => (
         <View style={styles.stepContainer}>
             <TextInput
                 style={styles.input}
-                value={matchDetails.title}
-                onChangeText={val => updateField('title', val)}
+                value={formikProps.values.title}
+                onChangeText={(val) => formikProps.setFieldValue('title', val)}
+                onBlur={formikProps.handleBlur('title')}
                 placeholder={t('placeholders.matchTitlePlaceholder')}
                 placeholderTextColor={COLORS.neutral[400]}
                 returnKeyType="next"
-                onSubmitEditing={() => {
-                    // Focus on the next input if needed
-                }}
-                blurOnSubmit={false}
             />
+            {formikProps.touched.title && formikProps.errors.title && (
+                <Text style={styles.errorText}>{formikProps.errors.title}</Text>
+            )}
 
             <TouchableOpacity style={styles.dateTimeBox} onPress={() => setShowDatePicker(true)}>
-                <MaterialCommunityIcons name="calendar" size={24} color={COLORS.primary.accent} />
+                <MaterialCommunityIcons name="calendar" size={24} color={COLORS.primary.accent}/>
                 <Text style={styles.dateTimeText}>
-                    {matchDetails.date.toLocaleDateString('fr-FR')}
+                    {formikProps.values.date.toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                    })}
                 </Text>
             </TouchableOpacity>
+            {formikProps.touched.date && formikProps.errors.date && (
+                <Text style={styles.errorText}>{formikProps.errors.date as string}</Text>
+            )}
 
             <TouchableOpacity style={styles.dateTimeBox} onPress={() => setShowTimePicker(true)}>
-                <MaterialCommunityIcons name="clock" size={24} color={COLORS.primary.accent} />
+                <MaterialCommunityIcons name="clock" size={24} color={COLORS.primary.accent}/>
                 <Text style={styles.dateTimeText}>
-                    {matchDetails.time.toLocaleTimeString('fr-FR', {
+                    {formikProps.values.time.toLocaleTimeString('fr-FR', {
                         hour: '2-digit',
                         minute: '2-digit',
                     })}
                 </Text>
             </TouchableOpacity>
+            {formikProps.touched.time && formikProps.errors.time && (
+                <Text style={styles.errorText}>{formikProps.errors.time as string}</Text>
+            )}
 
-            {showDatePicker &&
-                (Platform.OS === 'android' ? (
+            {/* Date Picker */}
+            {showDatePicker && (
+                Platform.OS === 'android' ? (
                     <DateTimePicker
-                        value={matchDetails.date}
+                        value={formikProps.values.date}
                         mode="date"
                         display="default"
                         minimumDate={new Date()}
-                         onChange={(event: Event, selected?: Date) => {
+                        onChange={(event: DateTimePickerEvent, selected?: Date) => {
                             setShowDatePicker(false);
                             if (selected) {
-                                updateField('date', selected);
+                                formikProps.setFieldValue('date', selected);
                             }
                         }}
                     />
@@ -288,13 +301,13 @@ const MatchCreationScreen: React.FC = () => {
                         <View style={styles.modalContainer}>
                             <View style={styles.pickerContainer}>
                                 <DateTimePicker
-                                    value={matchDetails.date}
+                                    value={formikProps.values.date}
                                     mode="date"
                                     display="spinner"
                                     minimumDate={new Date()}
-                                    onChange={(event: Event, selected?: Date) => {
+                                    onChange={(event: DateTimePickerEvent, selected?: Date) => {
                                         if (selected) {
-                                            updateField('date', selected);
+                                            formikProps.setFieldValue('date', selected);
                                         }
                                     }}
                                 />
@@ -307,19 +320,21 @@ const MatchCreationScreen: React.FC = () => {
                             </View>
                         </View>
                     </Modal>
-                ))}
+                )
+            )}
 
-            {showTimePicker &&
-                (Platform.OS === 'android' ? (
+            {/* Time Picker */}
+            {showTimePicker && (
+                Platform.OS === 'android' ? (
                     <DateTimePicker
-                        value={matchDetails.time}
+                        value={formikProps.values.time}
                         mode="time"
                         is24Hour
                         display="default"
-                        onChange={(event: Event, selected?: Date) => {
+                        onChange={(event: DateTimePickerEvent, selected?: Date) => {
                             setShowTimePicker(false);
                             if (selected) {
-                                updateField('time', selected);
+                                formikProps.setFieldValue('time', selected);
                             }
                         }}
                     />
@@ -333,13 +348,13 @@ const MatchCreationScreen: React.FC = () => {
                         <View style={styles.modalContainer}>
                             <View style={styles.pickerContainer}>
                                 <DateTimePicker
-                                    value={matchDetails.time}
+                                    value={formikProps.values.time}
                                     mode="time"
                                     is24Hour
                                     display="spinner"
-                                    onChange={(event: Event, selected?: Date) => {
+                                    onChange={(event: DateTimePickerEvent, selected?: Date) => {
                                         if (selected) {
-                                            updateField('time', selected);
+                                            formikProps.setFieldValue('time', selected);
                                         }
                                     }}
                                 />
@@ -352,20 +367,20 @@ const MatchCreationScreen: React.FC = () => {
                             </View>
                         </View>
                     </Modal>
-                ))}
+                )
+            )}
 
             <View style={styles.autocompleteContainer}>
                 <TextInput
                     style={styles.input}
                     value={query}
-                    onChangeText={handleLocationChange}
+                    onChangeText={(text) => handleLocationChange(text, formikProps.setFieldValue)}
                     placeholder={t('placeholders.locationPlaceholder')}
                     placeholderTextColor={COLORS.neutral[400]}
                     autoCorrect={false}
                     autoCapitalize="none"
                     returnKeyType="done"
                     onFocus={() => {
-                        // Optionally handle focus
                     }}
                 />
                 {loading && (
@@ -379,7 +394,7 @@ const MatchCreationScreen: React.FC = () => {
                     <FlatList
                         data={suggestions}
                         keyExtractor={(item) => item.place_id.toString()}
-                        renderItem={({ item }) => {
+                        renderItem={({item}) => {
                             const {
                                 house_number,
                                 road,
@@ -406,7 +421,7 @@ const MatchCreationScreen: React.FC = () => {
                             return (
                                 <TouchableOpacity
                                     style={styles.suggestionItem}
-                                    onPress={() => selectSuggestion(item)}
+                                    onPress={() => selectSuggestion(item, formikProps.setFieldValue)}
                                 >
                                     <Text style={styles.suggestionText}>{address}</Text>
                                 </TouchableOpacity>
@@ -416,30 +431,33 @@ const MatchCreationScreen: React.FC = () => {
                         keyboardShouldPersistTaps="handled"
                     />
                 )}
+                {formikProps.touched.location && formikProps.errors.location && (
+                    <Text style={styles.errorText}>{formikProps.errors.location}</Text>
+                )}
             </View>
         </View>
     );
 
-    const renderFormatAndDuration = () => (
+    const renderFormatAndDuration = (formikProps: FormikProps<MatchFormData>) => (
         <View style={styles.stepContainer}>
             <Text style={styles.label}>{t('fields.format')}</Text>
             <View style={styles.optionContainer}>
-                {MATCH_FORMATS.map(fmt => (
+                {MATCH_FORMATS.map((fmt) => (
                     <TouchableOpacity
-                        key={fmt}
+                        key={fmt.format}
                         style={[
                             styles.optionButton,
-                            matchDetails.format === fmt && styles.optionSelected,
+                            formikProps.values.format === fmt.format && styles.optionSelected,
                         ]}
                         onPress={() => {
-                            if (fmt === t('custom')) {
+                            if (fmt.format === 'Other') {
                                 if (Platform.OS === 'ios') {
                                     Alert.prompt(
                                         t('messages.customFormat'),
                                         t('messages.enterCustomFormat'),
                                         (input: string | null) => {
                                             if (input?.trim()) {
-                                                updateField('format', input.trim());
+                                                formikProps.setFieldValue('format', input.trim());
                                             }
                                         }
                                     );
@@ -448,7 +466,7 @@ const MatchCreationScreen: React.FC = () => {
                                         t('messages.customFormat'),
                                         t('messages.enterCustomFormat'),
                                         [
-                                            { text: t('buttons.cancel'), style: 'cancel' },
+                                            {text: t('buttons.cancel'), style: 'cancel'},
                                             {
                                                 text: t('buttons.ok'),
                                                 onPress: () =>
@@ -461,40 +479,46 @@ const MatchCreationScreen: React.FC = () => {
                                     );
                                 }
                             } else {
-                                updateField('format', fmt);
+                                formikProps.setFieldValue('format', fmt.format);
                             }
                         }}
                     >
                         <Text
                             style={[
                                 styles.optionText,
-                                matchDetails.format === fmt && styles.optionTextSelected,
+                                formikProps.values.format === fmt.format && styles.optionTextSelected,
                             ]}
                         >
-                            {fmt}
+                            {t(fmt.labelKey)}
                         </Text>
                     </TouchableOpacity>
                 ))}
             </View>
+            {formikProps.touched.format && formikProps.errors.format && (
+                <Text style={styles.errorText}>{formikProps.errors.format}</Text>
+            )}
 
-            <Text style={[styles.label, { marginTop: 20 }]}>
-                {t('fields.duration')}: {matchDetails.duration} {t('minutes')}
+            <Text style={[styles.label, {marginTop: 20}]}>
+                {t('fields.duration')}: {formikProps.values.duration} {t('minutes')}
             </Text>
             <Slider
-                style={{ marginHorizontal: -10 }}
-                minimumValue={30}
+                style={{marginHorizontal: -10}}
+                minimumValue={10}
                 maximumValue={180}
-                step={15}
-                value={matchDetails.duration}
-                onValueChange={(val: number) => updateField('duration', val)}
+                step={5}
+                value={formikProps.values.duration}
+                onValueChange={(val: number) => formikProps.setFieldValue('duration', val)}
                 minimumTrackTintColor={COLORS.primary.accent}
                 maximumTrackTintColor={COLORS.primary.light}
                 thumbTintColor={COLORS.primary.accent}
             />
+            {formikProps.touched.duration && formikProps.errors.duration && (
+                <Text style={styles.errorText}>{formikProps.errors.duration}</Text>
+            )}
         </View>
     );
 
-    const renderSkillLevel = () => (
+    const renderSkillLevel = (formikProps: FormikProps<MatchFormData>) => (
         <View style={styles.stepContainer}>
             <Text style={styles.label}>{t('fields.skillLevel')}</Text>
             <View style={styles.optionContainer}>
@@ -503,15 +527,15 @@ const MatchCreationScreen: React.FC = () => {
                         key={level.id}
                         style={[
                             styles.optionButton,
-                            matchDetails.skillLevel === level.id && styles.optionSelected,
+                            formikProps.values.skillLevel === level.id && styles.optionSelected,
                         ]}
-                        onPress={() => updateField('skillLevel', level.id)}
+                        onPress={() => formikProps.setFieldValue('skillLevel', level.id)}
                     >
                         <MaterialCommunityIcons
                             name={level.icon as any}
                             size={24}
                             color={
-                                matchDetails.skillLevel === level.id
+                                formikProps.values.skillLevel === level.id
                                     ? COLORS.primary.dark
                                     : COLORS.primary.accent
                             }
@@ -519,18 +543,21 @@ const MatchCreationScreen: React.FC = () => {
                         <Text
                             style={[
                                 styles.optionText,
-                                matchDetails.skillLevel === level.id && styles.optionTextSelected,
+                                formikProps.values.skillLevel === level.id && styles.optionTextSelected,
                             ]}
                         >
-                            {level.label}
+                            {t(level.labelKey)}
                         </Text>
                     </TouchableOpacity>
                 ))}
             </View>
+            {formikProps.touched.skillLevel && formikProps.errors.skillLevel && (
+                <Text style={styles.errorText}>{formikProps.errors.skillLevel}</Text>
+            )}
         </View>
     );
 
-    const renderConfirmation = () => (
+    const renderConfirmation = (formikProps: FormikProps<MatchFormData>) => (
         <View style={styles.stepContainer}>
             <Text style={styles.reviewText}>{t('messages.reviewDetails')}</Text>
             <View style={styles.summaryCard}>
@@ -542,7 +569,7 @@ const MatchCreationScreen: React.FC = () => {
                     />
                     <View style={styles.summaryContent}>
                         <Text style={styles.summaryLabel}>{t('fields.title')}</Text>
-                        <Text style={styles.summaryValue}>{matchDetails.title}</Text>
+                        <Text style={styles.summaryValue}>{formikProps.values.title}</Text>
                     </View>
                 </View>
 
@@ -557,8 +584,8 @@ const MatchCreationScreen: React.FC = () => {
                             {t('fields.date')} &amp; {t('fields.time')}
                         </Text>
                         <Text style={styles.summaryValue}>
-                            {matchDetails.date.toLocaleDateString('fr-FR')} -{' '}
-                            {matchDetails.time.toLocaleTimeString('fr-FR', {
+                            {formikProps.values.date.toLocaleDateString('fr-FR')} -{' '}
+                            {formikProps.values.time.toLocaleTimeString('fr-FR', {
                                 hour: '2-digit',
                                 minute: '2-digit',
                             })}
@@ -574,7 +601,7 @@ const MatchCreationScreen: React.FC = () => {
                     />
                     <View style={styles.summaryContent}>
                         <Text style={styles.summaryLabel}>{t('fields.location')}</Text>
-                        <Text style={styles.summaryValue}>{matchDetails.location}</Text>
+                        <Text style={styles.summaryValue}>{formikProps.values.location}</Text>
                     </View>
                 </View>
 
@@ -586,7 +613,7 @@ const MatchCreationScreen: React.FC = () => {
                     />
                     <View style={styles.summaryContent}>
                         <Text style={styles.summaryLabel}>{t('fields.format')}</Text>
-                        <Text style={styles.summaryValue}>{matchDetails.format}</Text>
+                        <Text style={styles.summaryValue}>{formikProps.values.format}</Text>
                     </View>
                 </View>
 
@@ -599,7 +626,7 @@ const MatchCreationScreen: React.FC = () => {
                     <View style={styles.summaryContent}>
                         <Text style={styles.summaryLabel}>{t('fields.duration')}</Text>
                         <Text style={styles.summaryValue}>
-                            {matchDetails.duration} {t('minutes')}
+                            {formikProps.values.duration} {t('minutes')}
                         </Text>
                     </View>
                 </View>
@@ -612,64 +639,85 @@ const MatchCreationScreen: React.FC = () => {
                     />
                     <View style={styles.summaryContent}>
                         <Text style={styles.summaryLabel}>{t('fields.skillLevel')}</Text>
-                        <Text style={styles.summaryValue}>{matchDetails.skillLevel}</Text>
+                        <Text style={styles.summaryValue}>{formikProps.values.skillLevel}</Text>
                     </View>
                 </View>
             </View>
         </View>
     );
 
-    const renderCurrentStep = () => {
+    const renderCurrentStep = (formikProps: FormikProps<MatchFormData>) => {
         switch (currentStep) {
             case 0:
-                return renderGeneralInfo();
+                return renderGeneralInfo(formikProps);
             case 1:
-                return renderFormatAndDuration();
+                return renderFormatAndDuration(formikProps);
             case 2:
-                return renderSkillLevel();
+                return renderSkillLevel(formikProps);
             case 3:
             default:
-                return renderConfirmation();
+                return renderConfirmation(formikProps);
         }
     };
 
     return (
         <SafeAreaView style={styles.safeArea}>
-            <KeyboardAwareScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{ flexGrow: 1 }}
-                keyboardShouldPersistTaps="handled"
-                enableOnAndroid
-                extraScrollHeight={Platform.OS === 'ios' ? 20 : 0}
+            <Formik
+                initialValues={initialMatchDetails}
+                validationSchema={matchValidationSchema}
+                onSubmit={async (values, {resetForm}) => {
+                    try {
+                        console.log("Creating match with values:", values);
+                        await matchesApi.create(values);
+                        Alert.alert(t('messages.success'), t('messages.matchCreatedSuccessfully'));
+                        resetForm();
+                        router.push('../home/MainHomeScreen');
+                    } catch (error) {
+                        Alert.alert(t('messages.error'), t('messages.failedToCreateMatch'));
+                    }
+                }}
             >
-                <View style={styles.header}>
-                    <Text style={styles.stepIndicator}>
-                        {t('messages.step')} {currentStep + 1} {t('messages.of')} {totalSteps}
-                    </Text>
-                    <View style={styles.progressContainer}>
-                        <Animated.View style={[styles.progressBar, { width: progressWidth }]} />
-                    </View>
-                </View>
+                {(formikProps: FormikProps<MatchFormData>) => (
+                    <KeyboardAwareScrollView
+                        style={{flex: 1}}
+                        contentContainerStyle={{flexGrow: 1}}
+                        keyboardShouldPersistTaps="handled"
+                        enableOnAndroid
+                        extraScrollHeight={Platform.OS === 'ios' ? 20 : 0}
+                    >
+                        <View style={styles.header}>
+                            <Text style={styles.stepIndicator}>
+                                {t('messages.step')} {currentStep + 1} {t('messages.of')} {totalSteps}
+                            </Text>
+                            <View style={styles.progressContainer}>
+                                <Animated.View style={[styles.progressBar, {width: progressWidth}]}/>
+                            </View>
+                        </View>
 
-                <View style={styles.body}>{renderCurrentStep()}</View>
+                        <View style={styles.body}>{renderCurrentStep(formikProps)}</View>
 
-                <View style={styles.footer}>
-                    {currentStep > 0 && (
-                        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-                            <MaterialCommunityIcons name="chevron-left" size={24} color="#fff" />
-                            <Text style={styles.buttonText}>{t('buttons.back')}</Text>
-                        </TouchableOpacity>
-                    )}
-                    <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-                        <Text style={styles.buttonText}>
-                            {isLastStep ? t('buttons.submit') : t('buttons.next')}
-                        </Text>
-                        {!isLastStep && (
-                            <MaterialCommunityIcons name="chevron-right" size={24} color="#fff" />
-                        )}
-                    </TouchableOpacity>
-                </View>
-            </KeyboardAwareScrollView>
+                        <View style={styles.footer}>
+                            {currentStep > 0 && (
+                                <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+                                    <MaterialCommunityIcons name="chevron-left" size={24} color="#fff"/>
+                                    <Text style={styles.buttonText}>{t('buttons.back')}</Text>
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                                style={styles.nextButton}
+                                onPress={() => handleNext(formikProps)}
+                            >
+                                <Text style={styles.buttonText}>
+                                    {isLastStep ? t('buttons.submit') : t('buttons.next')}
+                                </Text>
+                                {!isLastStep && (
+                                    <MaterialCommunityIcons name="chevron-right" size={24} color="#fff"/>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </KeyboardAwareScrollView>
+                )}
+            </Formik>
         </SafeAreaView>
     );
 };
@@ -866,7 +914,7 @@ const styles = StyleSheet.create({
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
+                shadowOffset: {width: 0, height: 2},
                 shadowOpacity: 0.25,
                 shadowRadius: 3.84,
             },
@@ -888,5 +936,10 @@ const styles = StyleSheet.create({
         position: 'absolute',
         right: 10,
         top: 15,
+    },
+    errorText: {
+        color: 'red',
+        fontSize: 12,
+        marginTop: 4,
     },
 });
