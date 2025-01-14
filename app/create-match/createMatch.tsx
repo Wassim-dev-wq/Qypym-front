@@ -1,13 +1,13 @@
 import React, {useState} from 'react';
 import {Animated, SafeAreaView, StyleSheet, Text, TouchableOpacity, View,} from 'react-native';
 import {MaterialCommunityIcons} from '@expo/vector-icons';
-import {router} from 'expo-router';
+import {router, useRouter} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
 import {COLORS} from '@/constants/Colors';
 import {t} from '@/constants/locales';
 
 type AppRoute =
-    | '/matchDetails'
+    | './matchDetails'
     | '/tournament'
     | '/league';
 
@@ -25,7 +25,7 @@ const eventTypes: EventType[] = [
         icon: 'soccer',
         title: t('friendlyMatch'),
         description: t('friendlyMatchDescription'),
-        nextScreen: '/matchDetails',
+        nextScreen: './matchDetails',
     },
     {
         id: 'tournament',
@@ -45,6 +45,7 @@ const eventTypes: EventType[] = [
 
 export default function EventTypeSelectionScreen() {
     const [chosenEventType, setChosenEventType] = useState<string | null>(null);
+    const router = useRouter();
 
     const goToNextScreen = () => {
         if (chosenEventType) {
