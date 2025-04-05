@@ -1,12 +1,12 @@
-import React, {useCallback, useEffect, useRef} from 'react';
-import {Animated, Platform, Pressable, StyleSheet, Text, View} from 'react-native';
-import {MaterialCommunityIcons} from '@expo/vector-icons';
-import {format, isToday, isTomorrow} from 'date-fns';
-import {fr} from 'date-fns/locale';
-import {LinearGradient} from 'expo-linear-gradient';
-import {COLORS, THEME_COLORS} from '@/src/constants/Colors';
-import {t} from "src/constants/locales";
-import {Match} from '@/src/types/match/match';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { format, isToday, isTomorrow } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, THEME_COLORS } from '@/src/constants/Colors';
+import { t } from "src/constants/locales";
+import { Match } from '@/src/types/match/match';
 
 const STATUS_INFO: {
     DRAFT: { icon: 'pencil-outline'; label: string };
@@ -61,7 +61,7 @@ interface MatchCardProps {
     style?: any;
 }
 
-const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) => {
+const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onLike, style }) => {
     const scaleAnim = useRef(new Animated.Value(0.95)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const isSaved = match.isSaved || false;
@@ -104,7 +104,7 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
     const simpleDate = useCallback((date: Date) => {
         if (isToday(date)) return t('today');
         if (isTomorrow(date)) return t('tomorrow');
-        return format(date, 'EEEE d MMMM', {locale: fr});
+        return format(date, 'EEEE d MMMM', { locale: fr });
     }, []);
 
     const matchDate = new Date(match.startDate);
@@ -124,7 +124,7 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
         <Animated.View
             style={[
                 styles.containerCard,
-                {opacity: fadeAnim, transform: [{scale: scaleAnim}]},
+                { opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
                 style,
             ]}
         >
@@ -132,8 +132,8 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
                 onPress={() => onPress(match)}
                 onPressIn={onPressIn}
                 onPressOut={onPressOut}
-                style={({pressed}) => [styles.pressableCard, pressed && styles.pressedCard]}
-                android_ripple={{color: 'rgba(255, 184, 0, 0.1)', borderless: false}}
+                style={({ pressed }) => [styles.pressableCard, pressed && styles.pressedCard]}
+                android_ripple={{ color: 'rgba(255, 184, 0, 0.1)', borderless: false }}
             >
                 <LinearGradient
                     colors={
@@ -141,24 +141,24 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
                             ? (['rgba(11, 17, 17, 1)', 'rgba(190, 165, 8, 0.04)'] as [string, string])
                             : (['rgba(26,26,26,0.05)', 'rgba(17,17,17,0.02)'] as [string, string])
                     }
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 1}}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                     style={styles.cardInner}
                 >
                     <View style={styles.statusRow}>
                         <LinearGradient
                             colors={THEME_COLORS.statusColors[getStatusColorKey(match.status)] as [string, string]}
-                            start={{x: 0, y: 0}}
-                            end={{x: 1, y: 1}}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
                             style={styles.statusBadge}
                         >
-                            <MaterialCommunityIcons name={status.icon} size={14} color={THEME_COLORS.textPrimary}/>
+                            <MaterialCommunityIcons name={status.icon} size={14} color={THEME_COLORS.textPrimary} />
                             <Text style={styles.statusText}>{status.label}</Text>
                         </LinearGradient>
                         {!match.owner && (
                             <Pressable
                                 onPress={handleLike}
-                                style={({pressed}) => [styles.bookmarkBtn, pressed && {opacity: 0.7}]}
+                                style={({ pressed }) => [styles.bookmarkBtn, pressed && { opacity: 0.7 }]}
                                 hitSlop={8}
                             >
                                 <MaterialCommunityIcons
@@ -173,8 +173,8 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
                         <View style={styles.timeArea}>
                             <LinearGradient
                                 colors={THEME_COLORS.timeContainerGradient as [string, string]}
-                                start={{x: 0, y: 0}}
-                                end={{x: 1, y: 1}}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
                                 style={styles.timeContainer}
                             >
                                 <MaterialCommunityIcons
@@ -191,28 +191,28 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
                             {match.title}
                         </Text>
                         <View style={styles.locationRow}>
-                            <MaterialCommunityIcons name="map-marker" size={16} color={THEME_COLORS.textSecondary}/>
+                            <MaterialCommunityIcons name="map-marker" size={16} color={THEME_COLORS.textSecondary} />
                             <Text style={styles.locationDisplay} numberOfLines={1}>
                                 {match.location.address}
                             </Text>
                         </View>
                         <View style={styles.detailsBox}>
                             <View style={styles.detailItem}>
-                                <MaterialCommunityIcons name="account-group" size={18} color={COLORS.primary.accent}/>
+                                <MaterialCommunityIcons name="account-group" size={18} color={COLORS.primary.accent} />
                                 <View>
                                     <Text style={styles.detailLabel}>{t('format')}</Text>
                                     <Text style={styles.detailValue}>{match.format}</Text>
                                 </View>
                             </View>
                             <View style={styles.detailItem}>
-                                <MaterialCommunityIcons name="clock-outline" size={18} color={COLORS.primary.accent}/>
+                                <MaterialCommunityIcons name="clock-outline" size={18} color={COLORS.primary.accent} />
                                 <View>
                                     <Text style={styles.detailLabel}>{t('duration')}</Text>
                                     <Text style={styles.detailValue}>{`${match.duration} min`}</Text>
                                 </View>
                             </View>
                             <View style={styles.detailItem}>
-                                <MaterialCommunityIcons name="trophy-outline" size={18} color={COLORS.primary.accent}/>
+                                <MaterialCommunityIcons name="trophy-outline" size={18} color={COLORS.primary.accent} />
                                 <View>
                                     <Text style={styles.detailLabel}>{t('level')}</Text>
                                     <Text style={styles.detailValue}>{match.skillLevel}</Text>
@@ -222,7 +222,7 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
                     </View>
                     {match.owner && (
                         <View style={styles.hostBadge}>
-                            <MaterialCommunityIcons name="shield-crown" size={14} color={COLORS.primary.accent}/>
+                            <MaterialCommunityIcons name="shield-crown" size={14} color={COLORS.primary.accent} />
                             <Text style={styles.hostText}>{t('host')}</Text>
                         </View>
                     )}
@@ -232,7 +232,7 @@ const MatchCard: React.FC<MatchCardProps> = ({match, onPress, onLike, style}) =>
                             style={styles.requestSection}
                         >
                             <View style={styles.requestRow}>
-                                <MaterialCommunityIcons name="account-clock" size={16} color={THEME_COLORS.primary}/>
+                                <MaterialCommunityIcons name="account-clock" size={16} color={THEME_COLORS.primary} />
                                 <Text style={styles.requestText}>
                                     {match.joinRequestCount}{' '}
                                     {match.joinRequestCount > 1 ? t('requests_plural') : t('request')}{' '}
@@ -255,11 +255,11 @@ const styles = StyleSheet.create({
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOffset: {width: 0, height: 4},
+                shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.2,
                 shadowRadius: 8,
             },
-            android: {elevation: 6},
+            android: { elevation: 6 },
         }),
     },
     pressableCard: {

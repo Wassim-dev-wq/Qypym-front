@@ -1,7 +1,7 @@
-import {LocationObject} from 'expo-location';
-import {matchesApi} from './matches.api';
+import { LocationObject } from 'expo-location';
+import { matchesApi } from './matches.api';
 import {API_CONFIG, ApiService} from "@/src/core/api/core/axios.config";
-import {Match} from '@/src/types/match/match';
+import { Match } from '@/src/types/match/match';
 
 export interface PageData<T> {
     content: T[];
@@ -54,7 +54,7 @@ export const matchService = {
         }
 
         try {
-            const response = await client.get(API_CONFIG.ENDPOINTS.MATCH.MATCHES, {params});
+            const response = await client.get(API_CONFIG.ENDPOINTS.MATCH.MATCHES, { params });
             return response.data;
         } catch (error) {
             throw error;

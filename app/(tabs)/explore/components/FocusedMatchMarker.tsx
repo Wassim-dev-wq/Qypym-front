@@ -5,7 +5,7 @@ import {MaterialCommunityIcons} from '@expo/vector-icons';
 import {LinearGradient} from 'expo-linear-gradient';
 import {COLORS} from '@/src/constants/Colors';
 import {isValidMatchStatus} from "@/src/types/match/options";
-import {Match} from '@/src/types/match/match';
+import { Match } from '@/src/types/match/match';
 
 type IconNames =
     | 'soccer'

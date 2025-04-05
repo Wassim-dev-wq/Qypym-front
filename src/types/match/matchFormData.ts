@@ -1,4 +1,4 @@
-import {MatchEnums} from './matchEnums';
+import { MatchEnums } from './matchEnums';
 
 export interface MatchFormData {
     title: string;

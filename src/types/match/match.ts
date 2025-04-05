@@ -1,5 +1,5 @@
-import {MatchEnums} from './matchEnums';
-import {Location} from './location';
+import { MatchEnums } from './matchEnums';
+import { Location } from './location';
 
 export interface Match {
     imageUrl: string;
