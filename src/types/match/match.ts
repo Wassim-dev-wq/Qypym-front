@@ -1,0 +1,35 @@
+import {MatchEnums} from './matchEnums';
+import {Location} from './location';
+
+export interface Match {
+    imageUrl: string;
+    id: string;
+    title: string;
+    description?: string;
+    createdAt: string;
+    updatedAt: string | null;
+    startDate: string;
+    duration: number;
+    format: string;
+    skillLevel: MatchEnums['SkillLevel'];
+    matchType: string;
+    location: Location;
+    creatorId: string;
+    status: MatchEnums['Status'];
+    owner: boolean;
+    joined: boolean;
+    savedCount: number;
+    joinedCount: number;
+    maxPlayers: number;
+    joinRequestCount: number;
+}
+
+export interface FilterMatchesRequest {
+    searchQuery?: string;
+    latitude?: number;
+    longitude?: number;
+    distance?: number;
+    skillLevels?: string[];
+    statuses?: string[];
+    formats?: string[];
+}
