@@ -1,11 +1,11 @@
-import React, {useEffect, useRef, useState} from 'react';
-import {Animated, Platform, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import {MaterialCommunityIcons} from '@expo/vector-icons';
-import {LinearGradient} from 'expo-linear-gradient';
-import {COLORS, THEME_COLORS} from '@/src/constants/Colors';
-import {format} from 'date-fns';
-import {fr} from 'date-fns/locale';
-import {Match} from '@/src/types/match/match';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, THEME_COLORS } from '@/src/constants/Colors';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { Match } from '@/src/types/match/match';
 
 interface CalloutProps {
     match: Match & { isSaved?: boolean };
@@ -46,8 +46,8 @@ const MatchCallout: React.FC<CalloutProps> = ({
         if (isUpdating) return;
         setIsUpdating(true);
         Animated.sequence([
-            Animated.timing(likeScale, {toValue: 1.4, duration: 150, useNativeDriver: true}),
-            Animated.spring(likeScale, {toValue: 1, friction: 3, useNativeDriver: true}),
+            Animated.timing(likeScale, { toValue: 1.4, duration: 150, useNativeDriver: true }),
+            Animated.spring(likeScale, { toValue: 1, friction: 3, useNativeDriver: true }),
         ]).start();
 
         try {
@@ -85,14 +85,14 @@ const MatchCallout: React.FC<CalloutProps> = ({
         } else if (d.toDateString() === tomorrow.toDateString()) {
             return `Demain · ${timeStr}`;
         }
-        return `${format(d, 'dd MMM yyyy', {locale: fr})} · ${timeStr}`;
+        return `${format(d, 'dd MMM yyyy', { locale: fr })} · ${timeStr}`;
     };
 
     const animationStyle = {
         opacity: popupAnim,
         transform: [
-            {scale: popupAnim.interpolate({inputRange: [0, 1], outputRange: [0.92, 1]})},
-            {translateY: popupAnim.interpolate({inputRange: [0, 1], outputRange: [20, 0]})},
+            { scale: popupAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
+            { translateY: popupAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) },
         ],
     };
 
@@ -104,8 +104,8 @@ const MatchCallout: React.FC<CalloutProps> = ({
                         ? (['rgba(26,26,26,0.95)', 'rgba(17,17,17,0.9)'] as [string, string])
                         : (['rgba(26,26,26,0.9)', 'rgba(17,17,17,0.85)'] as [string, string])
                 }
-                start={{x: 0, y: 0}}
-                end={{x: 1, y: 1}}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
                 style={[styles.gradientBox, isOwner && styles.ownerGradient]}
             >
                 <TouchableOpacity
@@ -121,8 +121,8 @@ const MatchCallout: React.FC<CalloutProps> = ({
                             {isOwner && (
                                 <LinearGradient
                                     colors={['rgba(255, 184, 0, 0.3)', 'rgba(255, 184, 0, 0.1)'] as [string, string]}
-                                    start={{x: 0, y: 0}}
-                                    end={{x: 1, y: 1}}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
                                     style={styles.ownerBadge}
                                 >
                                     <MaterialCommunityIcons
@@ -135,7 +135,7 @@ const MatchCallout: React.FC<CalloutProps> = ({
                             )}
                         </View>
                         <View style={styles.actionRow}>
-                            <Animated.View style={{transform: [{scale: likeScale}]}}>
+                            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
                                 <TouchableOpacity
                                     onPress={onLikePress}
                                     style={[styles.iconButton, isLiked && styles.likedButton]}
@@ -192,7 +192,7 @@ const MatchCallout: React.FC<CalloutProps> = ({
                                 <Text style={styles.detailText}>{match.duration}min</Text>
                             </View>
 
-                            <View style={styles.divider}/>
+                            <View style={styles.divider} />
 
                             <View style={styles.detailItem}>
                                 <MaterialCommunityIcons
@@ -223,11 +223,11 @@ const styles = StyleSheet.create({
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOffset: {width: 0, height: 4},
+                shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.2,
                 shadowRadius: 8,
             },
-            android: {elevation: 6},
+            android: { elevation: 6 },
         }),
         zIndex: 999,
     },
